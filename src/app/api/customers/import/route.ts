@@ -2,11 +2,16 @@ import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { prisma } from '@/lib/db';
 import { requireCurrentUser } from '@/lib/auth';
+import { validateSpreadsheetUpload } from '@/lib/upload-security';
 
 export async function POST(request: Request) {
   const currentUser = await requireCurrentUser();
   if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (currentUser.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   try {
@@ -17,9 +22,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Read file as buffer
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    const validated = await validateSpreadsheetUpload(file);
+    if (!validated.ok) {
+      return NextResponse.json({ error: validated.error }, { status: validated.status });
+    }
+
+    const { buffer } = validated;
 
     // Parse Excel file
     const workbook = XLSX.read(buffer, { type: 'buffer' });

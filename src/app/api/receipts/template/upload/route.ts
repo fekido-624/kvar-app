@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { requireCurrentUser } from '@/lib/auth';
+import { validateSpreadsheetUpload } from '@/lib/upload-security';
 
 export const runtime = 'nodejs';
 export const config = {
@@ -18,6 +19,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  if (currentUser.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -26,12 +31,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    if (!file.name.toLowerCase().endsWith('.xlsx')) {
-      return NextResponse.json({ error: 'Only .xlsx files are accepted' }, { status: 400 });
+    const validated = await validateSpreadsheetUpload(file);
+    if (!validated.ok) {
+      return NextResponse.json({ error: validated.error }, { status: validated.status });
     }
 
-    // Convert file to buffer
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const { buffer } = validated;
 
     // Save to templates directory
     const templatesDir = path.join(process.cwd(), 'templates');
