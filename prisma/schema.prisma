@@ -1,0 +1,69 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  role         String   @default("user")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  postcode  String
+  phone     String
+  kodKV     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ReceiptDraft {
+  id                 String   @id @default(cuid())
+  noResit            String   @default("")
+  noSeriSebatHarga   String   @default("")
+  namaPenerima       String
+  namaKolejVokasional String
+  tajuk              String   @default("")
+  perkara            String
+  kuantiti           Int
+  hargaSeunit        Float
+  hargaPostage       Float
+  tarikh             DateTime
+  semester           String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model ReceiptPerkaraOption {
+  id        String   @id @default(cuid())
+  label     String   @unique
+  createdAt DateTime @default(now())
+}
+
+model ReceiptTajukOption {
+  id        String   @id @default(cuid())
+  label     String   @unique
+  createdAt DateTime @default(now())
+}
+
+model ReceiptSequence {
+  key       String   @id
+  nextNo    Int      @default(1)
+  updatedAt DateTime @updatedAt
+}

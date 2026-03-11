@@ -1,0 +1,73 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/db';
+import { requireCurrentUser } from '@/lib/auth';
+
+const scoreKV = (keyword: string, item: { name: string; kodKV: string }) => {
+  const q = keyword.toLowerCase();
+  const name = item.name.toLowerCase();
+  const kod = item.kodKV.toLowerCase();
+
+  if (kod === q) return 0;
+  if (kod.startsWith(q)) return 1;
+  if (name === q) return 2;
+  if (name.startsWith(q)) return 3;
+  if (kod.includes(q)) return 4;
+  if (name.includes(q)) return 5;
+  return 6;
+};
+
+export async function GET(request: Request) {
+  const currentUser = await requireCurrentUser();
+  if (!currentUser) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const q = searchParams.get('q') || '';
+
+  if (q.trim().length === 0) {
+    return NextResponse.json({ kvList: [] });
+  }
+
+  try {
+    const keyword = q.trim();
+    const kvList = await prisma.customer.findMany({
+      where: {
+        OR: [
+          {
+            kodKV: {
+              contains: keyword,
+            },
+          },
+          {
+            name: {
+              contains: keyword,
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        postcode: true,
+        phone: true,
+        kodKV: true,
+      },
+      orderBy: { kodKV: 'asc' },
+    });
+
+    kvList.sort((a, b) => {
+      const scoreDiff = scoreKV(keyword, a) - scoreKV(keyword, b);
+      if (scoreDiff !== 0) return scoreDiff;
+      return a.kodKV.localeCompare(b.kodKV);
+    });
+
+    return NextResponse.json({ kvList });
+  } catch (error) {
+    return NextResponse.json(
+      { error: `Failed to search KV: ${(error as Error).message}` },
+      { status: 500 }
+    );
+  }
+}
