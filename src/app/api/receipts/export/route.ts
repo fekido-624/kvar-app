@@ -60,6 +60,7 @@ const fillDraftIntoTemplate = async (templateBuffer: Uint8Array, draft: {
   sheet.getCell('B21').value = draft.perkara;
   sheet.getCell('H21').value = draft.kuantiti;
   sheet.getCell('J21').value = draft.hargaSeunit;
+  sheet.getCell('M21').value = draft.kuantiti * draft.hargaSeunit;
   sheet.getCell('M26').value = draft.hargaPostage;
   sheet.getCell('M33').value = total;
   sheet.getCell('M10').value = formatDate(draft.tarikh.toISOString());
