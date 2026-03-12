@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Download, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,8 +51,32 @@ const emptyForm = {
 export default function DataParcelPage() {
   const [form, setForm] = useState(emptyForm);
   const [entries, setEntries] = useState<ParcelEntry[]>([]);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
+  const [isDeletingDraftId, setIsDeletingDraftId] = useState<string | null>(null);
+  const [isClearingDrafts, setIsClearingDrafts] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
+
+  const loadDrafts = async () => {
+    setIsLoadingDrafts(true);
+    try {
+      const response = await fetch('/api/data-parcel/drafts', { cache: 'no-store' });
+      if (!response.ok) {
+        return;
+      }
+
+      const data = await response.json();
+      const drafts = Array.isArray(data.drafts) ? data.drafts : [];
+      setEntries(drafts);
+    } finally {
+      setIsLoadingDrafts(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDrafts();
+  }, []);
 
   const totalParcel = useMemo(
     () => entries.reduce((sum, item) => sum + item.bilanganParcel, 0),
@@ -85,7 +109,9 @@ export default function DataParcelPage() {
     }));
   };
 
-  const handleSaveToList = () => {
+  const handleSaveToList = async () => {
+    if (isSavingDraft) return;
+
     const bilanganParcel = Number(form.bilanganParcel);
     const missingFields: string[] = [];
 
@@ -113,28 +139,79 @@ export default function DataParcelPage() {
       return;
     }
 
-    const nextEntry: ParcelEntry = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      namaCustomer: form.namaCustomer.trim(),
-      alamat: form.alamat.trim(),
-      poskod: form.poskod.trim(),
-      kv: form.kv.trim(),
-      noPhone: form.noPhone.trim(),
-      noOrder: form.noOrder.trim(),
-      bilanganParcel,
-    };
+    setIsSavingDraft(true);
+    try {
+      const response = await fetch('/api/data-parcel/drafts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          namaCustomer: form.namaCustomer.trim(),
+          alamat: form.alamat.trim(),
+          poskod: form.poskod.trim(),
+          kv: form.kv.trim(),
+          noPhone: form.noPhone.trim(),
+          noOrder: form.noOrder.trim(),
+          bilanganParcel,
+        }),
+      });
 
-    setEntries((current) => [...current, nextEntry]);
-    setForm(emptyForm);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        toast({
+          title: 'Simpan gagal',
+          description: data.error ?? 'Tidak dapat simpan draft data parcel.',
+          variant: 'destructive',
+        });
+        return;
+      }
 
-    toast({
-      title: 'Data disimpan ke senarai',
-      description: 'Data parcel berjaya ditambah untuk pratonton.',
-    });
+      await loadDrafts();
+      setForm(emptyForm);
+      toast({
+        title: 'Data disimpan ke senarai',
+        description: 'Data parcel berjaya disimpan sebagai draft.',
+      });
+    } catch {
+      toast({
+        title: 'Simpan gagal',
+        description: 'Ralat network/server semasa simpan draft data parcel.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingDraft(false);
+    }
   };
 
-  const handleDeleteEntry = (entryId: string) => {
-    setEntries((current) => current.filter((item) => item.id !== entryId));
+  const handleDeleteEntry = async (entryId: string) => {
+    if (isDeletingDraftId) return;
+
+    setIsDeletingDraftId(entryId);
+    try {
+      const response = await fetch(`/api/data-parcel/drafts/${entryId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        toast({
+          title: 'Padam gagal',
+          description: 'Tidak dapat padam draft data parcel.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      await loadDrafts();
+    } catch {
+      toast({
+        title: 'Padam gagal',
+        description: 'Ralat network/server semasa padam draft data parcel.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingDraftId(null);
+    }
   };
 
   const handleExportXlsx = async () => {
@@ -195,6 +272,43 @@ export default function DataParcelPage() {
       });
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleClearAllDrafts = async () => {
+    if (entries.length === 0 || isClearingDrafts) return;
+
+    const confirmed = window.confirm('Kosongkan semua draft data parcel dalam senarai ini?');
+    if (!confirmed) return;
+
+    setIsClearingDrafts(true);
+    try {
+      const response = await fetch('/api/data-parcel/drafts', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        toast({
+          title: 'Kosongkan gagal',
+          description: 'Tidak dapat kosongkan semua draft data parcel.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      await loadDrafts();
+      toast({
+        title: 'Senarai dikosongkan',
+        description: 'Semua draft data parcel telah dipadam.',
+      });
+    } catch {
+      toast({
+        title: 'Kosongkan gagal',
+        description: 'Ralat network/server semasa kosongkan draft data parcel.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsClearingDrafts(false);
     }
   };
 
@@ -264,8 +378,8 @@ export default function DataParcelPage() {
               />
             </div>
 
-            <Button type="button" className="w-full" onClick={handleSaveToList}>
-              Simpan Ke Senarai
+            <Button type="button" className="w-full" onClick={handleSaveToList} disabled={isSavingDraft}>
+              {isSavingDraft ? 'Menyimpan...' : 'Simpan Ke Senarai'}
             </Button>
           </CardContent>
         </Card>
@@ -277,15 +391,27 @@ export default function DataParcelPage() {
               {entries.length} entri dalam senarai | Jumlah parcel: {totalParcel}
             </CardDescription>
             <div className="pt-2">
-              <Button
-                type="button"
-                className="gap-2"
-                onClick={handleExportXlsx}
-                disabled={isExporting || entries.length === 0}
-              >
-                <Download size={16} />
-                {isExporting ? 'Mengeksport...' : `Eksport XLSX (${entries.length})`}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  className="gap-2"
+                  onClick={handleExportXlsx}
+                  disabled={isExporting || entries.length === 0}
+                >
+                  <Download size={16} />
+                  {isExporting ? 'Mengeksport...' : `Eksport XLSX (${entries.length})`}
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="gap-2"
+                  onClick={handleClearAllDrafts}
+                  disabled={isClearingDrafts || entries.length === 0}
+                >
+                  <Trash2 size={16} />
+                  {isClearingDrafts ? 'Mengosongkan...' : 'Kosongkan Draft'}
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -305,7 +431,7 @@ export default function DataParcelPage() {
                   {entries.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                        Belum ada data parcel dalam senarai.
+                        {isLoadingDrafts ? 'Memuatkan draft data parcel...' : 'Belum ada data parcel dalam senarai.'}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -322,6 +448,7 @@ export default function DataParcelPage() {
                             variant="ghost"
                             className="text-destructive"
                             onClick={() => handleDeleteEntry(item.id)}
+                            disabled={isDeletingDraftId === item.id}
                           >
                             <Trash2 size={16} />
                           </Button>

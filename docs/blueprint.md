@@ -2,7 +2,7 @@
 
 ## Project Handoff (Keep Updated)
 
-- Latest stable commit: `7054b1c`
+- Latest stable commit: `47a67ed`
 - Main branch: `main`
 - Production deploy host: TrueNAS SCALE
 - Deploy path (NAS): `/mnt/fekidopool/Web-App/Apps/KVar`
@@ -43,6 +43,30 @@ Jangan ubah flow sedia ada tanpa confirmation.
 cd /mnt/fekidopool/Web-App/Apps/KVar
 git pull
 docker compose up -d --build
+```
+
+### Latest Ops Troubleshooting (2026-03-12)
+
+- Issue: Data Parcel export failed with:
+	- `Template not found at public/templates/data-parcel-template.xlsx`
+- Root cause:
+	- Compose volume `./docker-data/public-templates:/app/public/templates` overrides container template folder.
+	- Host folder `docker-data/public-templates` was empty.
+- Fix applied:
+	- Copied template file from repo path to mounted host path:
+	- `cp ./public/templates/data-parcel-template.xlsx ./docker-data/public-templates/data-parcel-template.xlsx`
+	- Restarted/recreated container after copy.
+- Verification commands:
+	- `ls -la ./docker-data/public-templates`
+	- `docker compose exec kvar-app sh -c "ls -la /app/public/templates"`
+
+### Resume Prompt (Ops)
+
+```text
+Sambung deployment KVar di TrueNAS.
+Rujuk docs/blueprint.md > Latest Ops Troubleshooting (2026-03-12).
+Semak mount template: ./docker-data/public-templates:/app/public/templates.
+Jika Data Parcel export gagal, verify fail data-parcel-template.xlsx pada host dan dalam container.
 ```
 
 ## Core Features:

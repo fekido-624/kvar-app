@@ -67,3 +67,16 @@ model ReceiptSequence {
   nextNo    Int      @default(1)
   updatedAt DateTime @updatedAt
 }
+
+model DataParcelDraft {
+  id            String   @id @default(cuid())
+  namaCustomer  String
+  alamat        String   @default("")
+  poskod        String   @default("")
+  kv            String
+  noPhone       String
+  noOrder       String
+  bilanganParcel Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
