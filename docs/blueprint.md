@@ -1,5 +1,50 @@
 # **App Name**: AccessPilot
 
+## Project Handoff (Keep Updated)
+
+- Latest stable commit: `7054b1c`
+- Main branch: `main`
+- Production deploy host: TrueNAS SCALE
+- Deploy path (NAS): `/mnt/fekidopool/Web-App/Apps/KVar`
+- Important note: `dev.db` is local data file, do not commit.
+
+### Current Delivered Scope
+
+- Receipts page promoted from test flow to main `/receipts` flow.
+- Receipt export supports PDF generation per draft and ZIP download.
+- Customers page supports database export to Excel (`/api/customers/export`).
+- Customer phone uniqueness enforced in create/update/import:
+	- API returns `No Phone telah diguna` for duplicates.
+- Session expiry currently set to 5 minutes:
+	- `src/lib/auth.ts:7`
+
+### Resume Prompt (Copy/Paste)
+
+Use this in a new chat to continue safely:
+
+```text
+Sambung project KVar.
+Latest commit: 7054b1c.
+Rujuk docs/blueprint.md (Project Handoff).
+Fokus task: <isi task semasa>.
+Jangan ubah flow sedia ada tanpa confirmation.
+```
+
+### Developer Commands
+
+- Local dev: `npm run dev`
+- Type check: `npm run typecheck`
+- Build: `npm run build`
+- Start: `npm run start`
+
+### NAS Deploy Commands
+
+```bash
+cd /mnt/fekidopool/Web-App/Apps/KVar
+git pull
+docker compose up -d --build
+```
+
 ## Core Features:
 
 - Secure User Authentication: Users can log in with credentials created by an administrator, maintaining secure access, including initial admin login with default credentials.
