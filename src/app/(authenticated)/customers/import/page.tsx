@@ -22,6 +22,8 @@ import {
 type ImportResults = {
   total: number;
   success: number;
+  created: number;
+  updated: number;
   failed: number;
   errors: Array<{ row: number; kodKV: string; error: string }>;
 };
@@ -85,6 +87,27 @@ export default function ImportCustomersPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 401) {
+          toast({
+            title: 'Sesi Tamat',
+            description: 'Sila login semula untuk teruskan import pelanggan.',
+            variant: 'destructive',
+          });
+          router.push('/login');
+          setIsUploading(false);
+          return;
+        }
+
+        if (response.status === 403) {
+          toast({
+            title: 'Akses Ditolak',
+            description: 'Hanya admin dibenarkan untuk import pelanggan.',
+            variant: 'destructive',
+          });
+          setIsUploading(false);
+          return;
+        }
+
         toast({
           title: 'Import Gagal',
           description: data.error || 'Tidak dapat import pelanggan.',
@@ -99,7 +122,7 @@ export default function ImportCustomersPage() {
       if (data.results.success > 0) {
         toast({
           title: 'Import Selesai',
-          description: `${data.results.success} pelanggan berjaya diimport.`,
+          description: `${data.results.success} pelanggan diproses (${data.results.created} baru, ${data.results.updated} dikemaskini).`,
         });
       }
     } catch (error) {
@@ -146,6 +169,7 @@ export default function ImportCustomersPage() {
             </div>
             <p className="text-xs text-muted-foreground mt-4">
               Baris pertama ialah tajuk. Data bermula dari baris 2. Kod KV boleh berulang.
+              Sistem juga menyokong kolum tambahan No/Bil di hadapan.
             </p>
             <Button
               asChild
@@ -243,7 +267,7 @@ export default function ImportCustomersPage() {
               <CardDescription>Ringkasan proses import</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="border rounded-lg p-4 text-center">
                   <div className="text-2xl font-bold">{results.total}</div>
                   <div className="text-xs text-muted-foreground uppercase tracking-wider">
@@ -254,6 +278,18 @@ export default function ImportCustomersPage() {
                   <div className="text-2xl font-bold text-green-600">{results.success}</div>
                   <div className="text-xs text-muted-foreground uppercase tracking-wider">
                     Berjaya
+                  </div>
+                </div>
+                <div className="border rounded-lg p-4 text-center border-blue-500/30 bg-blue-500/5">
+                  <div className="text-2xl font-bold text-blue-600">{results.created}</div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Rekod Baru
+                  </div>
+                </div>
+                <div className="border rounded-lg p-4 text-center border-amber-500/30 bg-amber-500/5">
+                  <div className="text-2xl font-bold text-amber-600">{results.updated}</div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Override
                   </div>
                 </div>
                 <div className="border rounded-lg p-4 text-center border-destructive/30 bg-destructive/5">
@@ -269,7 +305,7 @@ export default function ImportCustomersPage() {
                   <CheckCircle className="h-4 w-4 text-green-600" />
                   <AlertTitle>Import Berjaya</AlertTitle>
                   <AlertDescription>
-                    {results.success} pelanggan berjaya diimport.
+                    {results.success} pelanggan diproses ({results.created} baru, {results.updated} dikemaskini).
                   </AlertDescription>
                 </Alert>
               )}

@@ -52,11 +52,23 @@ export default function CustomersPage() {
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterBy, setFilterBy] = useState<'all' | 'name' | 'postcode' | 'phone' | 'kodKV'>('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const router = useRouter();
   const searchParams = useSearchParams();
+
+  const initialPage = (() => {
+    const p = Number(searchParams.get('page') ?? '1');
+    return Number.isFinite(p) && p > 0 ? Math.floor(p) : 1;
+  })();
+  const initialQ = searchParams.get('q') ?? '';
+  const initialFilter = ((): 'all' | 'name' | 'postcode' | 'phone' | 'kodKV' => {
+    const f = searchParams.get('filter');
+    return f === 'name' || f === 'postcode' || f === 'phone' || f === 'kodKV' ? f : 'all';
+  })();
+
+  const [searchTerm, setSearchTerm] = useState(initialQ);
+  const [filterBy, setFilterBy] = useState<'all' | 'name' | 'postcode' | 'phone' | 'kodKV'>(initialFilter);
+  const [currentPage, setCurrentPage] = useState(initialPage);
+  const [pageBeforeSearch, setPageBeforeSearch] = useState<number | null>(null);
+  const router = useRouter();
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
 
@@ -91,11 +103,20 @@ export default function CustomersPage() {
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / PAGE_SIZE));
-  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
   const paginatedCustomers = filteredCustomers.slice(pageStart, pageStart + PAGE_SIZE);
   const pageCustomerIds = paginatedCustomers.map((customer) => customer.id);
   const allCurrentPageSelected =
     pageCustomerIds.length > 0 && pageCustomerIds.every((id) => selectedCustomerIds.includes(id));
+
+  const replaceUrl = (page: number, q: string, filter: string) => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    if (q.trim()) params.set('q', q);
+    if (filter !== 'all') params.set('filter', filter);
+    router.replace(`/customers?${params.toString()}`);
+  };
 
   const loadCustomers = async () => {
     const response = await fetch('/api/customers', { cache: 'no-store' });
@@ -108,27 +129,45 @@ export default function CustomersPage() {
     loadCustomers();
   }, []);
 
-  useEffect(() => {
+  const handleSearchChange = (value: string) => {
+    const hadSearch = searchTerm.trim().length > 0;
+    const hasSearch = value.trim().length > 0;
+
+    if (!hadSearch && hasSearch) {
+      setPageBeforeSearch(currentPage);
+      setCurrentPage(1);
+      setSearchTerm(value);
+      replaceUrl(1, value, filterBy);
+      return;
+    }
+
+    if (hadSearch && !hasSearch) {
+      const restoredPage = pageBeforeSearch ?? currentPage;
+      setCurrentPage(restoredPage);
+      setPageBeforeSearch(null);
+      setSearchTerm(value);
+      replaceUrl(restoredPage, value, filterBy);
+      return;
+    }
+
+    setSearchTerm(value);
+    replaceUrl(1, value, filterBy);
     setCurrentPage(1);
-  }, [searchTerm, filterBy]);
+  };
 
-  useEffect(() => {
-    const pageParam = Number(searchParams.get('page') ?? '1');
-    const safePage = Number.isFinite(pageParam) && pageParam > 0 ? Math.floor(pageParam) : 1;
-    if (safePage !== currentPage) {
-      setCurrentPage(safePage);
-    }
-  }, [searchParams]);
+  const handleFilterChange = (value: 'all' | 'name' | 'postcode' | 'phone' | 'kodKV') => {
+    setFilterBy(value);
+    setCurrentPage(1);
+    replaceUrl(1, searchTerm, value);
+  };
 
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
-  useEffect(() => {
-    router.replace(`/customers?page=${currentPage}`);
-  }, [currentPage, router]);
+  const buildCustomersReturnQuery = () => {
+    const params = new URLSearchParams();
+    params.set('page', String(safePage));
+    if (searchTerm.trim()) params.set('q', searchTerm);
+    if (filterBy !== 'all') params.set('filter', filterBy);
+    return params.toString();
+  };
 
   const handleDelete = async () => {
     if (!customerToDelete) return;
@@ -280,12 +319,12 @@ export default function CustomersPage() {
         <Input
           placeholder="Cari pelanggan..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           className="md:max-w-sm"
         />
         <Select
           value={filterBy}
-          onValueChange={(value: 'all' | 'name' | 'postcode' | 'phone' | 'kodKV') => setFilterBy(value)}
+          onValueChange={(value: 'all' | 'name' | 'postcode' | 'phone' | 'kodKV') => handleFilterChange(value)}
         >
           <SelectTrigger className="w-full md:w-[180px]">
             <SelectValue placeholder="Tapis ikut" />
@@ -374,7 +413,7 @@ export default function CustomersPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Tindakan</DropdownMenuLabel>
                         <DropdownMenuItem asChild>
-                          <Link href={`/customers/edit/${customer.id}?page=${currentPage}`} className="cursor-pointer">
+                          <Link href={`/customers/edit/${customer.id}?${buildCustomersReturnQuery()}`} className="cursor-pointer">
                             <Edit className="mr-2 h-4 w-4" /> Edit Pelanggan
                           </Link>
                         </DropdownMenuItem>
@@ -402,18 +441,26 @@ export default function CustomersPage() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
+            onClick={() => {
+              const next = Math.max(1, safePage - 1);
+              setCurrentPage(next);
+              replaceUrl(next, searchTerm, filterBy);
+            }}
+            disabled={safePage === 1}
           >
             Sebelum
           </Button>
           <span className="text-sm text-muted-foreground">
-            Halaman {currentPage} / {totalPages}
+            Halaman {safePage} / {totalPages}
           </span>
           <Button
             variant="outline"
-            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-            disabled={currentPage === totalPages}
+            onClick={() => {
+              const next = Math.min(totalPages, safePage + 1);
+              setCurrentPage(next);
+              replaceUrl(next, searchTerm, filterBy);
+            }}
+            disabled={safePage === totalPages}
           >
             Seterusnya
           </Button>

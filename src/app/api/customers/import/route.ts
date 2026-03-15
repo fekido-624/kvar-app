@@ -4,6 +4,22 @@ import { prisma } from '@/lib/db';
 import { requireCurrentUser } from '@/lib/auth';
 import { validateSpreadsheetUpload } from '@/lib/upload-security';
 
+function normalizeCell(value: unknown): string {
+  return value?.toString().trim() || '';
+}
+
+function normalizeHeader(value: unknown): string {
+  return normalizeCell(value).toLowerCase().replace(/\s+/g, ' ');
+}
+
+function findHeaderIndex(headers: string[], aliases: string[]): number {
+  for (const alias of aliases) {
+    const idx = headers.findIndex((header) => header === alias || header.includes(alias));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
 export async function POST(request: Request) {
   const currentUser = await requireCurrentUser();
   if (!currentUser) {
@@ -44,12 +60,26 @@ export async function POST(request: Request) {
       );
     }
 
+    const headerRow = (rawData[0] || []).map((cell) => normalizeHeader(cell));
+
+    const detectedIndexes = {
+      name: findHeaderIndex(headerRow, ['name', 'nama']),
+      address: findHeaderIndex(headerRow, ['address', 'alamat']),
+      postcode: findHeaderIndex(headerRow, ['postcode', 'post code', 'poskod']),
+      phone: findHeaderIndex(headerRow, ['no.phone', 'no phone', 'no. telefon', 'no telefon', 'telefon', 'phone']),
+      kodKV: findHeaderIndex(headerRow, ['kod kv', 'kodkv']),
+    };
+
+    const hasHeaderMapping = Object.values(detectedIndexes).every((index) => index >= 0);
+
     // Skip header row (index 0), process data rows
     const dataRows = rawData.slice(1);
 
     const results = {
       total: dataRows.length,
       success: 0,
+      created: 0,
+      updated: 0,
       failed: 0,
       errors: [] as Array<{ row: number; kodKV: string; error: string }>,
     };
@@ -58,12 +88,29 @@ export async function POST(request: Request) {
       const row = dataRows[i];
       const rowNumber = i + 2; // +2 because: +1 for header, +1 for 1-based index
 
-      // Excel columns: A=Name, B=Address, C=Postcode, D=Phone, E=KodKV
-      const name = row[0]?.toString().trim() || '';
-      const address = row[1]?.toString().trim() || '';
-      const postcode = row[2]?.toString().trim() || '';
-      const phone = row[3]?.toString().trim() || '';
-      const kodKV = row[4]?.toString().trim() || '';
+      // Support both formats:
+      // 1) A=Name, B=Address, C=Postcode, D=Phone, E=KodKV
+      // 2) A=No/Bil, B=Name, C=Address, D=Postcode, E=Phone, F=KodKV
+      const rowHasLeadingNoColumn =
+        normalizeHeader(rawData[0]?.[0]).includes('no') ||
+        normalizeHeader(rawData[0]?.[0]).includes('bil');
+      const fallbackOffset = rowHasLeadingNoColumn ? 1 : 0;
+
+      const name = hasHeaderMapping
+        ? normalizeCell(row[detectedIndexes.name])
+        : normalizeCell(row[0 + fallbackOffset]);
+      const address = hasHeaderMapping
+        ? normalizeCell(row[detectedIndexes.address])
+        : normalizeCell(row[1 + fallbackOffset]);
+      const postcode = hasHeaderMapping
+        ? normalizeCell(row[detectedIndexes.postcode])
+        : normalizeCell(row[2 + fallbackOffset]);
+      const phone = hasHeaderMapping
+        ? normalizeCell(row[detectedIndexes.phone])
+        : normalizeCell(row[3 + fallbackOffset]);
+      const kodKV = hasHeaderMapping
+        ? normalizeCell(row[detectedIndexes.kodKV])
+        : normalizeCell(row[4 + fallbackOffset]);
 
       // Validate required fields
       if (!name || !address || !postcode || !phone || !kodKV) {
@@ -76,32 +123,36 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const existingPhone = await prisma.customer.findFirst({
-        where: { phone },
-        select: { id: true },
-      });
-
-      if (existingPhone) {
-        results.failed++;
-        results.errors.push({
-          row: rowNumber,
-          kodKV,
-          error: 'No Phone telah diguna',
-        });
-        continue;
-      }
-
       try {
-        // Create customer
-        await prisma.customer.create({
-          data: {
-            name,
-            address,
-            postcode,
-            phone,
-            kodKV,
-          },
+        const existingPhone = await prisma.customer.findFirst({
+          where: { phone },
+          select: { id: true },
         });
+
+        if (existingPhone) {
+          // If phone exists, override customer details from imported row.
+          await prisma.customer.update({
+            where: { id: existingPhone.id },
+            data: {
+              name,
+              address,
+              postcode,
+              kodKV,
+            },
+          });
+          results.updated++;
+        } else {
+          await prisma.customer.create({
+            data: {
+              name,
+              address,
+              postcode,
+              phone,
+              kodKV,
+            },
+          });
+          results.created++;
+        }
 
         results.success++;
       } catch (error: any) {

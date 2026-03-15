@@ -26,13 +26,20 @@ export default function EditCustomerPage({ params }: { params: Promise<{ id: str
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnPage = searchParams.get('page') ?? '1';
+  const returnQ = searchParams.get('q') ?? '';
+  const returnFilter = searchParams.get('filter') ?? 'all';
+  const returnQueryParams = new URLSearchParams();
+  returnQueryParams.set('page', returnPage);
+  if (returnQ.trim()) returnQueryParams.set('q', returnQ);
+  if (returnFilter !== 'all') returnQueryParams.set('filter', returnFilter);
+  const returnUrl = `/customers?${returnQueryParams.toString()}`;
   const { toast } = useToast();
 
   useEffect(() => {
     const loadCustomer = async () => {
       const response = await fetch(`/api/customers/${customerId}`, { cache: 'no-store' });
       if (!response.ok) {
-        router.push(`/customers?page=${returnPage}`);
+        router.push(returnUrl);
         return;
       }
 
@@ -47,25 +54,33 @@ export default function EditCustomerPage({ params }: { params: Promise<{ id: str
     };
 
     loadCustomer();
-  }, [customerId, router, returnPage]);
+  }, [customerId, router, returnUrl]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customer) return;
     setIsSaving(true);
 
-    const payload = {
-      name,
-      address,
-      postcode,
-      phone,
-      kodKV,
-    };
+    const payload: Record<string, string> = {};
+    if (name !== customer.name) payload.name = name;
+    if (address !== customer.address) payload.address = address;
+    if (postcode !== customer.postcode) payload.postcode = postcode;
+    if (phone !== customer.phone) payload.phone = phone;
+    if (kodKV !== customer.kodKV) payload.kodKV = kodKV;
+
+    // Always send all fields to ensure complete update
+    if (Object.keys(payload).length === 0) {
+      toast({ title: 'Tiada Perubahan', description: 'Tiada maklumat yang diubah.' });
+      setIsSaving(false);
+      return;
+    }
+
+    const fullPayload = { name, address, postcode, kodKV, ...payload };
 
     const response = await fetch(`/api/customers/${customer.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(fullPayload),
     });
 
     if (!response.ok) {
@@ -83,7 +98,7 @@ export default function EditCustomerPage({ params }: { params: Promise<{ id: str
       title: 'Pelanggan Dikemaskini',
       description: `Pelanggan ${name} berjaya dikemaskini.`,
     });
-    router.push(`/customers?page=${returnPage}`);
+    router.push(returnUrl);
   };
 
   if (!customer) return null;
@@ -164,7 +179,7 @@ export default function EditCustomerPage({ params }: { params: Promise<{ id: str
         </Card>
 
         <div className="mt-8 flex items-center justify-end gap-3">
-          <Button type="button" variant="ghost" onClick={() => router.back()}>
+          <Button type="button" variant="ghost" onClick={() => router.push(returnUrl)}>
             <X size={18} className="mr-2" /> Batal
           </Button>
           <Button type="submit" className="gap-2 h-11 px-8" disabled={isSaving}>

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { UserRole } from '@/lib/types';
 
 const SESSION_COOKIE = 'accesspilot_session';
-const SESSION_MAX_AGE_SECONDS = 60 * 5;
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
 type SessionPayload = {
   userId: string;
